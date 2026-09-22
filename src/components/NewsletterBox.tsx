@@ -14,7 +14,6 @@ export default function NewsletterBox() {
     setErrorMessage('');
 
     try {
-      // Calls your custom Next.js API instead of Web3Forms
       const response = await fetch("/api/lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -29,7 +28,7 @@ export default function NewsletterBox() {
       } else {
         setErrorMessage(data.message || "Submission failed. Please try again.");
       }
-    } catch (err) {
+    } catch {
       setErrorMessage("Network error. Please check your internet connection.");
     } finally {
       setLoading(false);
@@ -37,22 +36,22 @@ export default function NewsletterBox() {
   };
 
   return (
-    <div id="newsletter" className="scroll-mt-32 my-12 p-8 sm:p-12 rounded-3xl bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 text-center shadow-xl">
+    <div id="newsletter" className="scroll-mt-24 sm:scroll-mt-32 my-8 sm:my-12 p-6 sm:p-12 rounded-2xl sm:rounded-3xl bg-white dark:bg-dark-800 border border-slate-200 dark:border-dark-700 text-center shadow-xl">
       <div className="max-w-lg mx-auto">
-        <div className="w-14 h-14 rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-500 flex items-center justify-center mx-auto mb-6 shadow-inner">
-          <Mail className="w-7 h-7" />
+        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-500 flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-inner">
+          <Mail className="w-6 h-6 sm:w-7 sm:h-7" />
         </div>
-        <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mb-3" style={{ fontFamily: 'var(--font-heading)' }}>
+        <h3 className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white mb-2 sm:mb-3" style={{ fontFamily: 'var(--font-heading)' }}>
           Get Verified Automation Blueprints
         </h3>
-        <p className="text-sm text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mb-6 sm:mb-8 leading-relaxed">
           Drop your email below to instantly receive downloadable Make.com & Zapier JSON workflows + tested LLM prompt templates.
         </p>
         
         {submitted ? (
-          <div className="flex flex-col items-center justify-center gap-3 text-brand-600 dark:text-brand-500 font-bold p-6 bg-brand-500/10 rounded-2xl animate-in zoom-in duration-300">
-            <CheckCircle2 className="w-8 h-8" />
-            <span>Success! The blueprints have been sent to your email.</span>
+          <div className="flex flex-col items-center justify-center gap-2 sm:gap-3 text-brand-600 dark:text-brand-500 font-bold p-4 sm:p-6 bg-brand-500/10 rounded-2xl">
+            <CheckCircle2 className="w-6 h-6 sm:w-8 sm:h-8" />
+            <span className="text-sm sm:text-base">Success! The blueprints have been sent to your email.</span>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -63,12 +62,12 @@ export default function NewsletterBox() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your work email"
-                className="bg-slate-50 dark:bg-dark-900 border border-slate-300 dark:border-dark-700 text-slate-900 dark:text-white px-5 py-3.5 rounded-xl flex-1 focus:ring-2 focus:ring-brand-500 outline-none text-sm transition shadow-sm"
+                className="bg-slate-50 dark:bg-dark-900 border border-slate-300 dark:border-dark-700 text-slate-900 dark:text-white px-4 sm:px-5 py-3 sm:py-3.5 rounded-xl flex-1 focus:ring-2 focus:ring-brand-500 outline-none text-sm transition shadow-sm w-full"
               />
               <button
                 type="submit"
                 disabled={loading}
-                className="bg-brand-500 hover:bg-brand-600 text-white font-bold px-8 py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                className="w-full sm:w-auto bg-brand-500 hover:bg-brand-600 text-white font-bold px-6 sm:px-8 py-3 sm:py-3.5 rounded-xl text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 whitespace-nowrap"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Get Free Blueprints'}
               </button>

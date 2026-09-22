@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* THIS LINE FIXES THE INVISIBLE TEXT - Forces Tailwind v4 to use class-based dark mode */
 @custom-variant dark (&:is(.dark *));
 
 @theme {
@@ -18,7 +17,12 @@
   --color-dark-700: #27272a; 
 }
 
-/* Default / Dark Mode Base */
+/* Prevent unwanted horizontal scroll on mobile */
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background-color: var(--color-dark-900);
   color: #fafafa;
@@ -37,4 +41,11 @@ html:not(.dark) body {
   background-color: #f8fafc !important;
   color: #0f172a !important;
   background-image: radial-gradient(circle at 50% -20%, rgba(16, 185, 129, 0.08) 0%, transparent 60%) !important;
+}
+
+/* Safe pre & code blocks on mobile */
+pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
