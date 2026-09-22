@@ -1,0 +1,56 @@
+[
+  {
+    "slug": "lead-scout-package",
+    "name": "Package 1: Custom AI Lead Scout & CRM",
+    "category": "Agency Service ($500 - $900)",
+    "description": "A private, automated system built for your business that continuously scrapes target niches, filters junk leads using AI, and pings your Telegram or Discord instantly.",
+    "affiliateUrl": "https://t.me/selimreza123",
+    "bestFor": "B2B agencies, real estate, and outbound sales teams looking for automated prospect pipelines",
+    "pricing": "Fixed price: $500 – $900 (Delivered in 5-7 days)"
+  },
+  {
+    "slug": "telegram-bot-package",
+    "name": "Package 2: Custom AI Telegram/WhatsApp Bots",
+    "category": "Agency Service ($300 - $600)",
+    "description": "AI-powered bots connected to your knowledge base or database to handle customer support, internal task management, and 24/7 lead qualification.",
+    "affiliateUrl": "https://t.me/selimreza123",
+    "bestFor": "E-commerce, SaaS support teams, and digital creators",
+    "pricing": "Fixed price: $300 – $600 (Delivered in 3-5 days)"
+  },
+  {
+    "slug": "rapid-mvp-package",
+    "name": "Package 3: Rapid MVP / Micro-SaaS Development",
+    "category": "Agency Service ($800 - $1,500+)",
+    "description": "Turn your raw software idea into a production-ready Next.js + Supabase web application with user auth, database storage, and integrated AI features.",
+    "affiliateUrl": "https://t.me/selimreza123",
+    "bestFor": "Startup founders and entrepreneurs needing fast go-to-market speed",
+    "pricing": "Fixed price: $800 – $1,500+ (Delivered in 10-14 days)"
+  },
+  {
+    "slug": "toolverse",
+    "name": "ToolVerse (Portfolio Proof-of-Work)",
+    "category": "Featured Web Utility App",
+    "description": "A comprehensive web suite featuring 50+ free online developer, PDF, image, and business utility tools built by Md. Selim Reza.",
+    "affiliateUrl": "https://toolsverse-kappa.vercel.app/",
+    "bestFor": "Developers and creators looking for fast browser-based utilities",
+    "pricing": "100% Free Public Utility"
+  },
+  {
+    "slug": "make",
+    "name": "Make.com (Recommended)",
+    "category": "Visual Automation Tool",
+    "description": "Powerful visual integration platform for complex multi-step automated workflows used in our recipes.",
+    "affiliateUrl": "https://www.make.com/en/register?pc=selimreza",
+    "bestFor": "Complex conditional branching and high-volume data loops",
+    "pricing": "Free tier available; Pro starts at $9/mo"
+  },
+  {
+    "slug": "zapier",
+    "name": "Zapier (Recommended)",
+    "category": "App Connectors",
+    "description": "The enterprise standard connecting 6,000+ business applications with native AI actions.",
+    "affiliateUrl": "https://zapier.com?aff=yourid",
+    "bestFor": "Fast setup and broad third-party tool integrations",
+    "pricing": "Free tier available; Starter starts at $19.99/mo"
+  }
+]

@@ -1,0 +1,36 @@
+name: Weekly Autonomous Article Publisher
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # Runs every Monday at 8:00 AM UTC
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install google-genai
+
+      - name: Generate Post
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python scripts/generate_post.py "How to automate client onboarding using Make.com and Notion"
+
+      - name: Commit & Push New Guide
+        run: |
+          git config --global user.name 'Automated Content Bot'
+          git config --global user.email 'bot@users.noreply.github.com'
+          git add content/blog/*.md
+          git commit -m "chore(content): automated weekly pSEO automation guide" || exit 0
+          git push

@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* THIS LINE FIXES THE INVISIBLE TEXT - Forces Tailwind v4 to use class-based dark mode */
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  
+  --color-brand-50: #ecfdf5;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-900: #064e3b;
+  
+  --color-dark-900: #09090b; 
+  --color-dark-800: #18181b; 
+  --color-dark-700: #27272a; 
+}
+
+/* Default / Dark Mode Base */
+body {
+  background-color: var(--color-dark-900);
+  color: #fafafa;
+  background-image: radial-gradient(circle at 50% -20%, rgba(16, 185, 129, 0.15) 0%, transparent 60%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+}
+
+/* Light Mode Overrides */
+html:not(.dark) body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+  background-image: radial-gradient(circle at 50% -20%, rgba(16, 185, 129, 0.08) 0%, transparent 60%) !important;
+}
