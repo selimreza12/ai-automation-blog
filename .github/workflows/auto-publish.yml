@@ -2,14 +2,17 @@ name: Weekly Autonomous Article Publisher
 
 on:
   schedule:
-    - cron: '0 8 * * 1' # Runs every Monday at 8:00 AM UTC
-  workflow_dispatch:
+    - cron: '0 8 * * 1' # Every Monday at 8:00 AM UTC
+  workflow_dispatch:      # Allows you to trigger it manually anytime!
+
+permissions:
+  contents: write
 
 jobs:
-  build-and-publish:
+  publish:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -19,18 +22,18 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install google-genai
+          pip install google-genai crewai python-dotenv litellm
 
-      - name: Generate Post
+      - name: Generate New pSEO Tutorial
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          python scripts/generate_post.py "How to automate client onboarding using Make.com and Notion"
+          python scripts/crew_writer.py "How to automate client onboarding using Make.com and Notion"
 
       - name: Commit & Push New Guide
         run: |
-          git config --global user.name 'Automated Content Bot'
-          git config --global user.email 'bot@users.noreply.github.com'
+          git config --global user.name 'AutoFlow Bot'
+          git config --global user.email 'bot@autoflowlab.com'
           git add content/blog/*.md
-          git commit -m "chore(content): automated weekly pSEO automation guide" || exit 0
+          git commit -m "feat(content): automated weekly pSEO guide [skip ci]" || exit 0
           git push
