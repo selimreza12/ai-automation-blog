@@ -10,158 +10,126 @@ os.environ["PYTHONWARNINGS"] = "ignore"
 from google import genai
 from google.genai import types
 
-# Candidate free-tier models in priority order
+# Active and latest supported free-tier models in priority order
 CANDIDATE_MODELS = [
-    "gemini-3.5-flash", "gemini-2.5-flash",
     "gemini-3.5-flash",
-    "gemini-3.8-flash",
     "gemini-3.6-flash",
-    "gemini-2.5-pro",
+    "gemini-3.1-pro-preview",
+    "gemini-3.8-flash",
 ]
 
 groq_key = os.environ.get("GROQ_API_KEY")
 gemini_key = os.environ.get("GEMINI_API_KEY")
 
-topic = sys.argv[1] if len(sys.argv) > 1 else "How to scrape Google Maps and qualify leads with LangChain"
+topic = sys.argv[1] if len(sys.argv) > 1 else "How to automate client onboarding using Make.com and Notion"
 
-def run_with_groq(topic_text, key):
-    print("⚡ Using Groq Free Tier (Llama 3.3 70B)...")
-    from crewai import Agent, Task, Crew, Process, LLM
-
-    llm = LLM(
-        model="groq/llama-3.3-70b-versatile",
-        api_key=key,
-        temperature=0.3
-    )
-
-    architect = Agent(
-        role="Workflow Architect",
-        goal=f"Design an automation architecture for: {topic_text}",
-        backstory="Expert systems engineer designing workflows in LangChain, Make, and Zapier.",
-        llm=llm,
-        verbose=False
-    )
-
-    writer = Agent(
-        role="Technical Content Engineer",
-        goal="Produce a comprehensive markdown tutorial with YAML frontmatter.",
-        backstory="Technical author who writes production-grade code walkthroughs.",
-        llm=llm,
-        verbose=False
-    )
-
-    spec_task = Task(
-        description=f"Draft architecture steps, data inputs, and code configs for: {topic_text}.",
-        expected_output="Technical blueprint and outline.",
-        agent=architect
-    )
-
-    article_task = Task(
-        description=f"""
-Write a complete Markdown article based on the technical spec.
-Format requirements:
-- Must begin with frontmatter:
----
-title: "[Under 60 chars title]"
-excerpt: "[Under 150 chars summary]"
-publishedAt: "{datetime.date.today().strftime('%Y-%m-%d')}"
-category: "Data Scraping & Enrichment"
-author: "AI Workflow Architect"
-tags: ["LangChain", "Web Scraping", "Lead Generation"]
-workflowTool: "LangChain"
-featured: false
----
-
-Include:
-- Architecture Overview
-- Step-by-Step implementation
-- A valid JSON blueprint or Python snippet block
-- Edge cases and rate limiting guidelines
-""",
-        expected_output="Full markdown article with frontmatter and code blocks.",
-        agent=writer
-    )
-
-    crew = Crew(
-        agents=[architect, writer],
-        tasks=[spec_task, article_task],
-        process=Process.sequential,
-        verbose=False
-    )
-
-    return str(crew.kickoff()).strip()
-
-def run_with_gemini(topic_text, key):
-    client = genai.Client(api_key=key)
-    prompt = f"""
+def generate_article_prompt(topic_text):
+    return f"""
 Write a production-grade, highly engaging markdown tutorial for an AI automation blog on:
 Topic: "{topic_text}"
 
 You must strictly output clean Markdown starting with this YAML frontmatter:
 ---
-title: "Scrape Google Maps & Qualify Leads with LangChain"
-excerpt: "Automate local business lead extraction with LangChain agents and store qualified B2B prospects."
+title: "Automate Client Onboarding with Make.com & Notion"
+excerpt: "Learn how to build an autonomous client onboarding system with Make.com, Notion databases, and automated Slack invites."
 publishedAt: "{datetime.date.today().strftime('%Y-%m-%d')}"
-category: "Data Scraping & Enrichment"
+category: "Agency Automation"
 author: "AI Workflow Architect"
-tags: ["LangChain", "Web Scraping", "Lead Generation", "Python"]
-workflowTool: "LangChain"
+tags: ["Make.com", "Notion", "Client Onboarding", "Automation"]
+workflowTool: "Make.com"
 featured: false
 ---
 
 Follow immediately with:
 ## Architecture Overview
-A concise breakdown of the input trigger, the scraping tool, the LLM scoring agent, and storage.
+A concise breakdown of the input trigger, the validation steps, Notion workspace provisioning, and email dispatch.
 
-## Step 1: Setting Up the Environment & Dependencies
-Provide actual Python code snippets importing langchain, langchain_openai, and pydantic.
+## Step 1: Setting Up the Inbound Webhook
+Explain payload attributes (client_name, email, plan_tier).
 
-## Step 2: Extracting Maps Data
-Provide the Python scraper or API call logic.
+## Step 2: Creating Client Records in Notion
+Explain database mapping and custom properties.
 
-## Step 3: Automated Lead Scoring with LLM Chains
-Show how an LLM agent evaluates prospect websites to score lead intent (Tier 1, Tier 2, Tier 3).
+## Step 3: Automated Welcome Email & Resource Delivery
+Explain how to send assets and invite links.
 
 ## JSON Blueprint Configuration
-Provide a sample JSON config block representing this workflow.
+Provide a sample JSON configuration block representing this Make.com workflow.
 
-## Error Handling, Proxies & Rate Limits
-Production tips to avoid getting blocked.
+## Error Handling & Exception Management
+Production guidelines for handling failed webhooks or duplicate onboarding submissions.
 """
 
-    last_error = None
+def run_with_gemini(topic_text, key):
+    client = genai.Client(api_key=key)
+    prompt = generate_article_prompt(topic_text)
+
+    # 1. Try Primary Candidate Models with Exponential Backoff
     for model_name in CANDIDATE_MODELS:
         print(f"🔄 Attempting generation with '{model_name}'...")
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.3)
-            )
-            if response.text:
-                print(f"✨ Successfully generated with '{model_name}'!")
-                return response.text.strip()
-        except Exception as err:
-            err_msg = str(err)
-            if "503" in err_msg or "UNAVAILABLE" in err_msg:
-                print(f"⏳ '{model_name}' is experiencing high demand (503). Trying alternate model...")
-            elif "404" in err_msg:
-                print(f"⏩ '{model_name}' not available on this endpoint. Skipping...")
-            else:
-                print(f"⚠️ Notice on '{model_name}': {err_msg[:90]}... Retrying next...")
-            last_error = err
-            time.sleep(1)
+        for attempt in range(1, 4):  # Up to 3 retries on temporary 503
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(temperature=0.3)
+                )
+                if response.text:
+                    print(f"✨ Successfully generated with '{model_name}'!")
+                    return response.text.strip()
+            except Exception as err:
+                err_msg = str(err)
+                if "503" in err_msg or "UNAVAILABLE" in err_msg:
+                    wait_time = attempt * 4
+                    print(f"⏳ '{model_name}' is experiencing high demand (503). Retrying in {wait_time}s (Attempt {attempt}/3)...")
+                    time.sleep(wait_time)
+                elif "404" in err_msg:
+                    print(f"⏩ '{model_name}' not available. Moving to next candidate...")
+                    break
+                else:
+                    print(f"⚠️ Notice on '{model_name}': {err_msg[:80]}...")
+                    time.sleep(2)
+                    break
 
-    raise Exception(f"All Gemini models exhausted. Last error: {last_error}")
+    # 2. Dynamic Model Discovery Fallback
+    print("🔍 Probing API for any available generative models...")
+    try:
+        for m in client.models.list():
+            m_name = m.name.replace("models/", "")
+            if "flash" in m_name or "pro" in m_name:
+                try:
+                    print(f"🧪 Testing dynamically discovered model: '{m_name}'...")
+                    response = client.models.generate_content(
+                        model=m_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(temperature=0.3)
+                    )
+                    if response.text:
+                        print(f"✨ Success with discovered model '{m_name}'!")
+                        return response.text.strip()
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"Could not list models: {e}")
 
-# Main execution
+    raise Exception("All Gemini models exhausted. Consider adding GROQ_API_KEY as a backup.")
+
+# Run generator
 content = None
 
 if groq_key:
     try:
-        content = run_with_groq(topic, groq_key)
+        from crewai import Agent, Task, Crew, Process, LLM
+        print("⚡ Using Groq Free Tier (Llama 3.3 70B)...")
+        llm = LLM(model="groq/llama-3.3-70b-versatile", api_key=groq_key, temperature=0.3)
+        architect = Agent(role="Workflow Architect", goal=f"Design {topic}", backstory="Expert engineer", llm=llm, verbose=False)
+        writer = Agent(role="Writer", goal="Write markdown tutorial with frontmatter", backstory="Tech writer", llm=llm, verbose=False)
+        spec = Task(description=f"Blueprint for {topic}", expected_output="Tech spec", agent=architect)
+        article = Task(description=generate_article_prompt(topic), expected_output="Markdown article", agent=writer)
+        crew = Crew(agents=[architect, writer], tasks=[spec, article], process=Process.sequential)
+        content = str(crew.kickoff()).strip()
     except Exception as e:
-        print(f"⚠️ Groq generation failed: {e}")
+        print(f"Groq warning: {e}")
 
 if not content and gemini_key:
     try:
@@ -172,7 +140,6 @@ if not content and gemini_key:
 
 if not content:
     print("❌ Error: No working API key provided or generation failed.")
-    print("Export GROQ_API_KEY or GEMINI_API_KEY and run again.")
     sys.exit(1)
 
 # Save to content/blog/
