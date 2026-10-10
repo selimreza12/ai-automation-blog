@@ -2,7 +2,7 @@ name: Weekly Autonomous Article Publisher
 
 on:
   schedule:
-    - cron: '0 8 * * 1' # Every Monday at 8:00 AM UTC
+    - cron: '0 8,20 * * *' # Every day at 8:00 AM and 8:00 PM UTC
   workflow_dispatch:      # Allows you to trigger it manually anytime!
 
 permissions:
