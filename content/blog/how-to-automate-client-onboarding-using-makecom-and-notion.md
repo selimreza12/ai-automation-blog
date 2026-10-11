@@ -11,150 +11,175 @@ featured: false
 
 ## Architecture Overview
 
-A resilient client onboarding automation requires a decoupled, event-driven architecture that bridges the gap between front-end data collection and back-end execution. 
+Scaling an agency means eliminating repetitive administrative overhead. Client onboarding is prime real estate for automation: it requires precision, data synchronization, prompt communication, and zero dropped balls. 
+
+This production-grade blueprint outlines how to build a resilient, automated client onboarding engine using **Typeform** (as the ingestion trigger), **Make.com** (as the orchestration middleware), **OpenAI** (for data sanitization and categorization), **Notion** (as the single source of truth database), and **Slack/Gmail** (for multi-channel notifications).
 
 ```
-[ Typeform / Webhook ] 
-       │ (JSON Payload)
-       ▼
-[ Make.com Router ] ──(Validation & Sanitization)
-       │
-       ├─► [ OpenAI / Claude API ] (Extract & Structure Client Data)
-       │
-       ├─► [ Notion Database ] (Create Master Client Record & Tasks)
-       │
-       └─► [ Slack / Gmail API ] (Dispatch Welcome Pack & Internal Alerts)
+[ Typeform Submission ] 
+         │
+         ▼ (Webhook)
+[ Make.com Router ] ──► [ OpenAI API: Data Sanitization & Brief Summary ]
+                              │
+                              ▼
+                 [ Notion DB: Create Client Profile ]
+                              │
+                              ▼
+                 [ Slack & Gmail: Dispatch Notifications ]
 ```
 
-1. **Input Trigger:** Captures raw form data via Webhook (e.g., Typeform, Tally, or Webflow).
-2. **Validation & Sanitization:** Filters out spam, validates email formats, and normalizes phone numbers.
-3. **Data Storage (Notion):** Automatically provisions a dedicated client workspace, generates a project tracker from a template, and logs details in a master CRM database.
-4. **Automated Notifications:** Dispatches personalized welcome emails to the client and internal alert notifications to Slack.
+### Core Components
+1. **Input Trigger:** A high-converting intake form capturing project requirements, budgets, and communication preferences.
+2. **Data Sanitization (AI):** An LLM step that standardizes messy human text into uniform JSON tags, extracts key deliverables, and flags potential scope risks.
+3. **Persistent Storage (Notion):** Automatically provisions a dedicated client workspace, populates core properties, and generates a customized project roadmap page.
+4. **Dispatch & Notifications:** Triggers a personalized welcome email sequence via Gmail and posts an internal briefing alert to a dedicated Slack channel.
 
 ---
 
 ## Step 1: Setting Up the Trigger & Payload
 
-To start, you need a reliable entry point that securely passes data into Make.com. 
+To kick off the workflow reliably, we use a webhook-driven trigger. While you can use any form builder (Google Forms, Tally, Webflow), Typeform is ideal due to its rich payload structure and support for hidden fields.
 
-1. Create a new scenario in **Make.com**.
-2. Add a **Webhooks > Custom Webhook** module. Copy the generated URL.
-3. Paste this URL into your form builder's webhook settings (e.g., Typeform integration or a custom frontend app).
-4. Send a test submission containing the following payload structure:
+### 1.1 Configure the Intake Form
+Ensure your form captures the following critical fields:
+* `Client Name` (Text)
+* `Company Name` (Text)
+* `Email Address` (Email)
+* `Primary Project Goal` (Long text)
+* `Selected Package Tier` (Dropdown: Starter, Growth, Enterprise)
 
+### 1.2 Initialize the Make.com Scenario
+1. Log into your **Make.com** dashboard and create a new scenario.
+2. Add a **Webhooks > Custom Webhook** module as your trigger.
+3. Copy the generated webhook URL and paste it into your Typeform's *Connect > Webhooks* settings.
+4. Send a test submission in Typeform so Make.com can capture the payload schema. 
+
+Your incoming data payload should resemble this structure:
 ```json
 {
-  "client_name": "Jane Doe",
-  "company_name": "Acme Corp",
-  "email": "jane@acmecorp.com",
-  "service_tier": "Enterprise",
-  "project_scope": "We need a complete rebrand and headless Shopify migration completed by Q3."
+  "event_id": "01HXYZ...",
+  "form_response": {
+    "submitted_at": "2026-10-11T08:30:00Z",
+    "answers": [
+      {"field": {"ref": "client_name"}, "text": "Jane Doe"},
+      {"field": {"ref": "company_name"}, "text": "Acme Corp"},
+      {"field": {"ref": "email"}, "text": "jane@acmecd.com"},
+      {"field": {"ref": "goal"}, "text": "We need a complete rebrand and automated sales pipeline."}
+    ]
+  }
 }
 ```
-
-5. Click **Redetermine data structure** in Make.com and submit another test form so Make maps your variables dynamically.
 
 ---
 
 ## Step 2: Processing Data with AI
 
-Raw client inputs are often messy, unstructured, and difficult to parse programmatically. We will use an **OpenAI** (or Anthropic) module to parse the raw text into actionable metadata.
+Clients rarely write structured requirements. To prevent messy data from entering your CRM or project management system, we pass the raw project description through OpenAI to extract actionable insights.
 
-1. Add an **OpenAI > Create a Completion** (or Create a Chat Completion) module.
-2. Set the model to `gpt-4o` for maximum reliability and JSON-mode adherence.
-3. Configure the **System Prompt**:
+### 2.1 Add the OpenAI Module
+1. Add an **OpenAI > Create a Completion** (or Chat Completions) module immediately after your webhook.
+2. Select model `gpt-4o` for maximum reliability and structural output enforcement.
 
-> *You are an expert agency operations manager. Read the client's project scope and extract structured JSON containing: `estimated_budget_tier` (Low/Mid/High), `key_deliverables` (array of strings), and a `summary` (1 sentence).*
+### 2.2 Configure the Prompt & System Instructions
+Use strict system instructions to force the model to output valid JSON. This allows Make.com to map the response downstream seamlessly without regex parsing.
 
-4. Configure the **User Prompt** using mapped variables from Step 1:
+* **System Prompt:**
+  > You are an elite agency operations assistant. Analyze the incoming client project description. Extract key deliverables, categorize the project complexity (Low, Medium, High), and summarize their core objective in under 20 words. Return *only* valid JSON matching the requested schema.
 
-```text
-Client: {{1.client_name}}
-Company: {{1.company_name}}
-Tier: {{1.service_tier}}
-Scope: {{1.project_scope}}
-```
-
-5. Enforce **JSON Output Mode** in the advanced module settings to ensure downstream modules can read the response reliably without parsing errors.
+* **User Prompt:**
+  > Client Company: `[Company Name from Trigger]`
+  > Raw Goal: `[Primary Project Goal from Trigger]`
+  > 
+  > Output Schema:
+  > {
+  >   "clean_summary": "string",
+  >   "complexity_rating": "Low" | "Medium" | "High",
+  >   "key_deliverables": ["string"],
+  >   "risk_flag": boolean
+  > }
 
 ---
 
 ## Step 3: Dispatch & CRM Sync
 
-Now that we have sanitized data and AI-extracted metadata, we write it to our system of record (Notion) and trigger notifications.
+Now that we have sanitized, AI-processed data, it’s time to provision the client's infrastructure in Notion and alert the team.
 
-### 1. Notion Database Synchronization
-* Add a **Notion > Create a Database Item** module.
-* Connect your Master Clients Database.
-* Map the fields:
-  * **Name / Title:** `{{1.company_name}} - {{1.client_name}}`
-  * **Email:** `{{1.email}}`
-  * **Service Tier:** `{{1.service_tier}}`
-  * **AI Summary:** `{{2.choices[].message.content.summary}}`
+### 3.1 Provisioning the Notion Database Record
+1. Add a **Notion > Create a Database Item** module.
+2. Connect it to your master **Client Operations Hub** database.
+3. Map the parameters using the variables from Step 1 and Step 2:
+   * **Name / Title:** `[Company Name] - Onboarding`
+   * **Email:** `[Email Address]`
+   * **Status:** Set to `Onboarding Pending`
+   * **Complexity:** Map to the `complexity_rating` returned by OpenAI.
+   * **AI Brief:** Map to `clean_summary`.
 
-### 2. Automated Welcome Dispatch
-* Add a **Gmail > Send an Email** module (or Slack).
-* **To:** `{{1.email}}`
-* **Subject:** Welcome aboard, {{1.client_name}}! Let's build something great.
-* **Content:** Use HTML or rich text to pull in dynamic data from the onboarding form and AI categorization.
+### 3.2 Dynamic Page Content Generation
+To save your account managers hours of manual work, use Notion's **Append a Page Content** module to inject a standardized project scope directly into the newly created page body using Markdown blocks.
+
+### 3.3 Multi-Channel Notifications
+1. **Internal Slack Alert:** Add a **Slack > Create a Message** module targeting your `#agency-alerts` channel. 
+   > *Message Template:* 🚨 **New Client Onboarding:** *[Company Name]* has completed intake. Package: *[Tier]*. Complexity: *[Complexity]*. [View Notion Brief](Notion_URL)
+2. **Automated Welcome Email:** Add a **Gmail > Send an Email** module targeting the client's email address. Use a personalized template welcoming them to the roster and outlining the next steps.
 
 ---
 
 ## JSON Blueprint Configuration
 
-Import this JSON structure directly into Make.com via **"Import Blueprint"** to bootstrap your scenario architecture.
+You can import this production-ready scenario directly into Make.com. Save the following block as a `.json` file and upload it via your Make.com scenario menu:
 
 ```json
 {
   "name": "Client Onboarding Automation",
-  "flow": [
+  "version": 1,
+  "modules": [
     {
       "id": 1,
-      "module": "gateway:CustomWebHook",
-      "version": 1,
+      "name": "Typeform Webhook",
+      "type": "webhooks:CustomWebhook",
       "parameters": {},
-      "mapper": {},
-      "metadata": {
-        "designer": { "x": 0, "y": 0 }
-      }
+      "mapper": {}
     },
     {
       "id": 2,
-      "module": "openai:createChatCompletion",
-      "version": 1,
+      "name": "OpenAI Sanitize",
+      "type": "open-ai:createChatCompletion",
       "parameters": {
-        "model": "gpt-4o"
+        "model": "gpt-4o",
+        "response_format": { "type": "json_object" }
       },
       "mapper": {
         "messages": [
           {
             "role": "system",
-            "content": "Extract actionable project metadata into strict JSON."
+            "content": "Return valid JSON containing clean_summary, complexity_rating, and key_deliverables."
           },
           {
             "role": "user",
-            "content": "{{1.project_scope}}"
+            "content": "Client: {{1.company}} Goal: {{1.goal}}"
           }
-        ],
-        "response_format": { "type": "json_object" }
-      },
-      "metadata": {
-        "designer": { "x": 300, "y": 0 }
+        ]
       }
     },
     {
       "id": 3,
-      "module": "notion:createDatabaseItem",
-      "version": 1,
+      "name": "Create Notion Client Page",
+      "type": "notion:createDatabaseItem",
       "parameters": {
-        "databaseId": "YOUR_NOTION_DB_ID"
+        "databaseId": "YOUR_DATABASE_ID_HERE"
       },
       "mapper": {
-        "title": "{{1.company_name}}",
-        "email": "{{1.email}}"
-      },
-      "metadata": {
-        "designer": { "x": 600, "y": 0 }
+        "properties": {
+          "Name": {
+            "title": [{ "text": { "content": "{{1.company}}" } }]
+          },
+          "Email": {
+            "email": "{{1.email}}"
+          },
+          "Complexity": {
+            "select": { "name": "{{2.complexity_rating}}" }
+          }
+        }
       }
     }
   ],
@@ -169,8 +194,8 @@ Import this JSON structure directly into Make.com via **"Import Blueprint"** to 
 
 ## Error Handling & Production Guidelines
 
-When deploying client onboarding workflows to production, edge cases can disrupt user experience if not handled proactively. Implement these best practices:
+When deploying client-facing automation workflows into production, resilience is paramount. Implement these architectural best practices:
 
-* **Rate Limiting & Quotas:** AI providers (OpenAI/Anthropic) enforce strict RPM (Requests Per Minute) limits. Add a **Flow Control > Sleep** module or handle HTTP 429 errors gracefully using Make's built-in directive error handlers.
-* **Retry Logic:** Configure custom error handlers on your HTTP and Notion modules. Set a **Break** directive with 3 automatic retries spaced 5 minutes apart for transient API dropouts.
-* **Data Validation Fallbacks:** If a client submits a malformed email or leaves crucial fields blank, route the error branch to a dedicated Slack channel (`#ops-alerts`) rather than failing silently, allowing your human team to intervene immediately.
+* **Rate Limiting & Concurrency:** OpenAI and Notion APIs enforce strict rate limits. Implement a **Sleep** module or configure Make.com's built-in **Error Handler** with a directive to *Resume* or *Break* after 3 exponential backoff retries.
+* **JSON Parsing Fallbacks:** If OpenAI occasionally returns malformed JSON, wrap your parsing steps in a Make.com **Router** combined with a fallback text-filter to catch exceptions before they crash the scenario.
+* **Duplicate Prevention:** Always use a unique identifier (such as the client's email address) in an initial **Notion > Search Database** module to verify whether a record already exists before creating a duplicate entry.
