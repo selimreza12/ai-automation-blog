@@ -10,119 +10,120 @@ featured: false
 ---
 
 ## Architecture Overview
-Modern client onboarding requires speed, accuracy, and a personalized touch—elements that often fall victim to human error during manual execution. This production-grade architecture bridges the gap between client acquisition and internal execution by establishing a seamless, zero-touch pipeline.
+Modern client onboarding requires speed, accuracy, and a personalized touch. Manual data entry between intake forms, CRMs, and project management boards creates friction and delays. 
+
+This production-grade automation architecture bridges the gap between your intake form and internal operations using **Make.com** as the orchestration engine and **Notion** as the centralized system of record.
 
 ```
-[ Webhook Trigger ] ──> [ Data Validation & Sanitization ] ──> [ AI Enrichment & Scope Parsing ] 
-                                                                           │
-                                                                           ▼
-[ Real-time Notifications ] <── [ CRM & Notion Sync ] <── [ Secure Credential Generation ]
+[ Typeform / Webhook Trigger ] 
+       │
+       ▼
+[ Data Validation & Sanitization ]
+       │
+       ▼
+[ OpenAI (GPT-4o) Context Enrichment ]
+       │
+       ▼
+[ Notion Workspace (Database & Task Creation) ]
+       │
+       ▼
+[ Slack / Email Automated Notification Dispatch ]
 ```
 
-1. **Input Trigger:** A secure Webhook (via Typeform, Tally, or Stripe) captures raw payload data upon a client signing or submitting an intake form.
-2. **Validation & Sanitization:** Make.com parses the JSON payload, checks for null values, normalizes string formatting (e.g., proper capitalization of company names), and flags incomplete entries.
-3. **Data Storage & Workspace Provisioning:** An automated sync engine creates a dedicated Notion project hub from a master template, assigns internal team leads, and logs the client profile in your CRM.
-4. **Automated Notifications:** Customized, context-aware welcome packets and internal Slack/Teams alerts are dispatched simultaneously to kick off project execution.
+1. **Input Trigger:** A prospective client submits an onboarding form containing company details, project scopes, and requirements.
+2. **Validation & Sanitization:** Make.com checks the payload for missing fields, phone number formatting, and duplicate client entries.
+3. **AI Processing:** An LLM module analyzes the raw project requirements to generate a customized project roadmap and estimated timeline.
+4. **Data Storage & CRM Sync:** A new page is dynamically generated inside your Notion Clients database, complete with relation properties tied to an auto-populated project tasks database.
+5. **Automated Notification:** A dispatch module pushes a welcome email to the client and fires an internal alert to your team’s Slack channel.
 
 ---
 
 ## Step 1: Setting Up the Trigger & Payload
-To start, you need a reliable entry point that securely listens for incoming client data. For this tutorial, we will use a Make.com Custom Webhook module paired with an intake form (e.g., Tally or Typeform).
+To ensure robust data integrity, your onboarding pipeline should start with a structured webhook receiver or a dedicated form tool integration (e.g., Typeform, Tally, or Webflow).
 
-### 1. Create the Webhook
-1. Log into your **Make.com** dashboard and create a new scenario.
-2. Add a **Webhooks > Custom Webhook** module and click **Add**.
-3. Name your webhook (e.g., `Client Onboarding - Production`) and copy the generated URL.
-
-### 2. Configure the Intake Form Payload
-Ensure your intake form sends a clean JSON payload. A production-ready payload structure should look like this:
+### Configuring the Webhook
+1. In Make.com, create a new scenario and add a **Custom Webhook** module as your trigger.
+2. Copy the generated webhook URL and paste it into your form builder's integration settings.
+3. Submit a test payload containing the following minimum JSON schema:
 
 ```json
 {
-  "client_name": "Sarah Jenkins",
-  "company_name": "Vortex Media Group",
-  "email": "sarah@vortexmedia.io",
-  "package_tier": "Enterprise Growth",
-  "project_scope": "Full rebrand, headless CMS migration, and 3 months of SEO retainers.",
-  "budget": "$15,000",
-  "submitted_at": "2026-10-18T09:30:00Z"
+  "client_name": "Jane Doe",
+  "company_name": "Acme Corp",
+  "email": "jane@acmecorp.com",
+  "project_scope": "Full-stack web application redesign with AI integration.",
+  "budget": "$10,000 - $25,000"
 }
 ```
 
-Paste this JSON structure into Make.com's "Determining data structure" feature during webhook setup so all subsequent modules have instant access to mapped variables.
+4. Click **Run Once** in Make.com and submit another test form to capture the data structure.
 
 ---
 
 ## Step 2: Processing Data with AI
-Once the payload is captured, raw client requirements can be unstructured and difficult to parse systematically. We will use an **OpenAI (GPT-4o)** module in Make.com to analyze the `project_scope` and structure it into actionable milestones, tags, and timeline estimates.
+Raw client inputs are often unstructured and messy. By routing the `project_scope` through an AI model (such as OpenAI's `gpt-4o`), we can parse the unstructured text into actionable database attributes and milestone lists.
 
-### 1. Constructing the System Prompt
-Add an **OpenAI > Create a Completion** module (or use the Advanced Assistant module) directly after your webhook. Configure it with the following parameters:
+1. Add an **OpenAI -> Create a Completion** (or Create a Chat Completion) module to your scenario.
+2. Set up your connection using your OpenAI API key.
+3. Use the following structured prompt configuration:
 
-* **Model:** `gpt-4o`
-* **Temperature:** `0.2` (Low temperature ensures deterministic, structured output)
-* **Response Format:** `JSON object`
-
-#### System Instructions:
 ```text
-You are an expert agency operations manager. Analyze the incoming client project scope and return a strict JSON object with the following keys:
-- "estimated_weeks": integer (estimated duration to complete)
-- "priority_level": string ("Low", "Medium", "High", "Critical")
-- "core_deliverables": array of strings (extracted bullet points of milestones)
-- "internal_department": string ("Design", "Engineering", "Marketing", or "Strategy")
+System: You are an expert technical project manager for a software development agency. Your task is to analyze the client's project scope and extract structured milestones.
+
+User Input: 
+Company: {{1.company_name}}
+Scope: {{1.project_scope}}
+Budget: {{1.budget}}
+
+Output strictly in valid JSON format with the following keys:
+- "project_summary": A concise 2-sentence summary of the deliverables.
+- "estimated_weeks": Integer representing estimated delivery time.
+- "milestones": Array of 3 strings outlining major project phases.
 ```
 
-#### User Message Payload (Mapped from Webhook):
-```text
-Client: {{1.client_name}} from {{1.company_name}}
-Package: {{1.package_tier}}
-Scope Details: {{1.project_scope}}
-```
-
-This transforms messy human text into a clean data array ready for database ingestion.
+4. Ensure your model parameters are set to a low temperature (`0.2`) to guarantee deterministic, parseable JSON outputs for downstream Notion properties.
 
 ---
 
 ## Step 3: Dispatch & CRM Sync
-With structured data in hand, it's time to provision the client's operational environment in **Notion** and sync their profile across your stack.
+Now that we have sanitized data and AI-enriched insights, we need to commit this information to Notion and notify stakeholders.
 
-### 1. Create the Notion Client Hub
-1. Add a **Notion > Create a Page** module.
-2. Select your Master Projects database as the Parent Item.
-3. Map the fields dynamically from your Webhook and AI modules:
-   * **Title (Page Name):** `[Client Hub] {{1.company_name}} - {{1.client_name}}`
-   * **Status:** Set to `Onboarding`
-   * **Client Email:** Map `{{1.email}}`
-   * **Priority:** Map `{{AI.priority_level}}`
-   * **Estimated Timeline:** Map `{{AI.estimated_weeks}} Weeks`
+### 1. Create the Client Record in Notion
+* Add a **Notion -> Create a Database Item** module.
+* Connect it to your master **Clients** database.
+* Map the incoming variables:
+  * **Name / Title:** `{{1.company_name}} - {{1.client_name}}`
+  * **Email:** `{{1.email}}`
+  * **Budget:** `{{1.budget}}`
+  * **AI Summary:** `{{2.choices[].message.content.project_summary}}`
 
-### 2. Add Database Items (Deliverables)
-Use an **Iterator** module followed by a **Notion > Create a Database Item** module to loop through the `core_deliverables` array returned by OpenAI. This automatically populates your newly created Notion hub with pre-assigned tasks and milestones.
+### 2. Dynamically Generate Project Tasks
+* Add an **Iterator** module, mapping the `milestones` array generated by OpenAI in Step 2.
+* Follow the Iterator with another **Notion -> Create a Database Item** module targeting your **Tasks** database.
+* Map the Iterator's output (`milestone`) to the Task Title, and link the relation property back to the newly created Client page ID from the previous Notion step.
 
-### 3. Send Team and Client Notifications
-* **Internal Alert:** Route a message to a designated Slack channel (`#client-wins`) using a **Slack > Create a Message** module:
-  > 🚀 **New Client Onboarded!** 
-  > *Client:* `{{1.client_name}} ({{1.company_name}})`
-  > *Tier:* `{{1.package_tier}}`
-  > *Notion Hub:* [View Workspace]({{Notion.url}})
-* **Client Welcome Email:** Use a **Gmail** or **SendGrid** module to dispatch a personalized welcome template containing links to their newly minted onboarding portal.
+### 3. Send Notifications
+* Add a **Slack -> Create a Message** module.
+* Send an alert to your `#onboarding-alerts` channel:
+  > 🚀 **New Client Onboarded!**
+  > **Company:** `{{1.company_name}}`
+  > **Budget:** `{{1.budget}}`
+  > **Estimated Delivery:** `{{2.choices[].message.content.estimated_weeks}} weeks`
 
 ---
 
 ## JSON Blueprint Configuration
-Import this foundational blueprint directly into Make.com by saving the JSON block below as a `.json` file and using the **Import Blueprint** feature in your scenario settings.
+You can import the schema blueprint below directly into Make.com to jumpstart your scenario build. *(Note: Ensure you reconnect your native Make.com credentials for Notion, OpenAI, and Slack after importing).*
 
 ```json
 {
-  "name": "Client Onboarding Automation - Production",
+  "name": "Client Onboarding Automation (Notion + AI)",
   "flow": [
     {
       "id": 1,
-      "module": "webhooks:CustomWebhook",
+      "module": "gateway:CustomWebhook",
       "version": 1,
-      "parameters": {
-        "hook": 987654
-      },
+      "parameters": {},
       "mapper": {},
       "metadata": {
         "designer": { "x": 0, "y": 0 }
@@ -130,23 +131,23 @@ Import this foundational blueprint directly into Make.com by saving the JSON blo
     },
     {
       "id": 2,
-      "module": "openai:CreateACompletion",
+      "module": "openai:CreateChatCompletion",
       "version": 1,
       "parameters": {
-        "model": "gpt-4o",
-        "response_format": "json_object"
+        "model": "gpt-4o"
       },
       "mapper": {
         "messages": [
           {
             "role": "system",
-            "content": "Analyze project scope and output JSON with estimated_weeks, priority_level, core_deliverables, and internal_department."
+            "content": "You are a technical PM. Extract a project summary and milestone array in strict JSON."
           },
           {
             "role": "user",
-            "content": "Scope: {{1.project_scope}}"
+            "content": "Company: {{1.company_name}}\nScope: {{1.project_scope}}"
           }
-        ]
+        ],
+        "response_format": { "type": "json_object" }
       },
       "metadata": {
         "designer": { "x": 300, "y": 0 }
@@ -154,16 +155,16 @@ Import this foundational blueprint directly into Make.com by saving the JSON blo
     },
     {
       "id": 3,
-      "module": "notion:createPage",
-      "version": 1,
+      "module": "notion:createDatabaseItem",
+      "version": 2,
       "parameters": {
-        "databaseId": "your_notion_database_id_here"
+        "databaseId": "YOUR_NOTION_DATABASE_ID_HERE"
       },
       "mapper": {
-        "title": "[Client Hub] {{1.company_name}}",
+        "title": "{{1.company_name}}",
         "properties": {
           "Email": "{{1.email}}",
-          "Priority": "{{2.priority_level}}"
+          "Status": "Onboarding"
         }
       },
       "metadata": {
@@ -182,11 +183,9 @@ Import this foundational blueprint directly into Make.com by saving the JSON blo
 
 ## Error Handling & Production Guidelines
 
-When running mission-critical workflows like client onboarding, system failures can result in a poor first impression. Implement these production-grade guards:
+When scaling automated onboarding workflows to production, resilience is paramount. Implement these architectural best practices:
 
-* **Rate Limiting & Quotas:** APIs like Notion and OpenAI have strict request-per-minute (RPM) limits. Add a **Sleep** module or enable Make.com's built-in flow control if you anticipate burst onboarding volumes.
-* **Error Handlers & Fallbacks:** 
-  * Attach an **Error Handler directive (Break)** to critical modules like OpenAI and Notion.
-  * If OpenAI times out or returns malformed JSON, route the payload to a fallback router that assigns a default priority (`Medium`) and alerts your engineering team via Slack.
-* **Data Validation Guards:** Implement a filter directly after your Webhook to verify that the `email` field contains an `@` symbol and that the `budget` field is not null. This stops spam payloads from cluttering your Notion workspace and triggering unnecessary API credits.
-* **Idempotency:** Include a deduplication step using a quick lookup module in your CRM or Notion database to verify that the client email hasn't already been onboarded, preventing duplicate workspace provisioning during webhook retries.
+* **Rate Limiting & Concurrency:** Notion's API enforces a strict rate limit of **3 requests per second**. If you are generating multiple tasks via an Iterator, insert a **Sleep** module with a 350ms delay between database item creations to prevent `HTTP 429 Too Many Requests` errors.
+* **Retry Logic:** Configure error-handling routes on your OpenAI and Notion modules. If an API times out or throws a server error, set an automatic retry attempt with exponential backoff (e.g., 3 retries, spaced 1 minute apart).
+* **Data Validation Fallbacks:** If the AI module occasionally returns malformed JSON, place a text parser fallback rule or wrap the output step in an error directive that defaults to a standard generic onboarding template.
+* **Duplicate Prevention:** Before creating a Notion record, use a **Notion -> Search Database Items** module queried by the client's email address. Use a **Router** with a filter to ensure the workflow halts if the client already exists in your system.
