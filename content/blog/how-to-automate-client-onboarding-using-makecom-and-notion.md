@@ -9,165 +9,156 @@ workflowTool: "Make.com"
 featured: false
 ---
 
-Manual client onboarding is one of the highest friction points for growing agencies and B2B services. Between receiving an intake form, analyzing requirements, creating workspace databases, and sending personalized welcome materials, operations teams spend hours on repetitive overhead.
+Manual client onboarding creates operational bottlenecks, delays project kickoff times, and increases human error. For high-growth agencies and software consultancies, scaling ops requires an automated pipeline that ingest raw intake forms, parses unstructured requirements using AI, updates internal CRM records, and notifies stakeholders instantly.
 
-By coupling **Make.com** as an orchestration engine with **OpenAI** for cognitive processing and **Notion** as a centralized workspace CRM, you can build an enterprise-grade automated onboarding pipeline. This guide walks you through building an end-to-end, AI-powered client onboarding system capable of handling complex intake data, generating structured project plans, and syncing instantly with your operational stack.
+This tutorial provides a complete engineering walkthrough to build an enterprise-grade client onboarding engine using **Make.com**, **OpenAI GPT-4o**, and **Notion**.
 
 ---
 
 ## Architecture Overview
 
-The onboarding pipeline processes raw client form submissions, enhances the data using an LLM, structures the workspace in Notion, and dispatches real-time internal and external alerts.
+The system operates as an event-driven automation engine. When a client submits an intake form, a webhook fires into Make.com, triggering data validation, AI analysis, CRM updates in Notion, and real-time team notifications.
 
 ```
-┌─────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│   Form Engine   │ ---> │ Custom Webhook   │ ---> │ Data Sanitizer   │
-│ (Typeform/Tally)│      │  (Make.com Trigger)     │ Filter & Validate│
-└─────────────────┘      └──────────────────┘      └────────┬─────────┘
-                                                            │
-                                                            ▼
-┌─────────────────┐      ┌──────────────────┐      ┌──────────────────┐
-│  Slack / Email  │ <--- │ Notion API Sync  │ <--- │ OpenAI Structured│
-│ Notifications   │      │ Client Hub & Tasks      │ Output Generation│
-└─────────────────┘      └──────────────────┘      └──────────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌───────────────────┐
+│ Client Intake   │───> │ Webhook Trigger  │───> │ JSON Validation & │
+│ (Typeform/Tally)│     │ (Make.com Router)│     │ Data Formatting   │
+└─────────────────┘     └──────────────────┘     └───────────────────┘
+                                                           │
+                                                           ▼
+┌─────────────────┐     ┌──────────────────┐     ┌───────────────────┐
+│ Slack Alert &   │ <───│ Notion CRM Sync  │ <───│ OpenAI GPT-4o     │
+│ Welcome Email   │     │ (Client + Tasks) │     │ Scope Parsing     │
+└─────────────────┘     └──────────────────┘     └───────────────────┘
 ```
 
-### Flow Breakdown
-1. **Input Trigger**: A custom webhook receives a raw JSON payload from an intake form (e.g., Typeform, Tally, or a custom frontend).
-2. **Validation Layer**: Make.com filters enforce payload integrity (verifying email syntaxes, required attributes, and asset URL formatting).
-3. **Cognitive Layer (AI)**: An OpenAI step ingests raw client briefs, extracts key deliverables, scores initial project complexity, and drafts a customized onboarding welcome sequence using JSON Schema mode.
-4. **Data Storage & Workspaces (Notion API)**: Creates a dynamic record in the Notion Client CRM, initializes a relation-linked Task Board, and generates client-facing portal pages.
-5. **Notification Layer**: Fires an internal team alert via Slack with an executive executive summary and sends an automated welcome email with portal credentials.
+### Key Workflow Stages
+
+1. **Input Trigger**: Captures intake payload via an incoming HTTP Webhook (e.g., Tally, Typeform, or custom web client).
+2. **Data Validation & Deduplication**: Validates critical fields (email syntax, company domain) and queries Notion to verify if the account already exists.
+3. **AI Processing Layer**: Sends raw form answers to OpenAI's structured output API (GPT-4o) to generate a standardized project brief, risk assessment, and initial roadmap task array.
+4. **Data Storage & Orchestration**: Dynamically generates a new Client Page in Notion, creates linked sub-tasks using an Iterator module, and formats property fields.
+5. **Dispatch & Notifications**: Sends a formatted alert to Slack containing direct links to Notion alongside an automated onboarding welcome email to the client.
 
 ---
 
 ## Step 1: Setting Up the Trigger & Payload
 
-To keep the pipeline input-agnostic, we start with a **Custom Webhook** module in Make.com. This allows any intake client (Typeform, Webflow, custom web app) to POST payloads into the execution thread.
+We start by setting up a custom webhook endpoint in Make.com to listen for incoming client onboarding form submissions.
 
-### Webhook Payload Schema
-Configure your form engine or client application to send the following JSON contract via `POST`:
+### Webhook Configuration
+
+1. Log into **Make.com** and create a new scenario named `[PROD] Client Onboarding Automation`.
+2. Add a **Custom Webhook** module (`Webhooks > Custom Webhook`).
+3. Click **Add**, name the webhook `Client Intake Receiver`, and copy the generated URL.
+4. Ensure your form builder (e.g., Typeform, Fillout, Tally) sends an HTTP POST payload to this endpoint upon submission.
+
+### Sample Incoming JSON Payload
 
 ```json
 {
+  "submission_id": "sub_9842a1bc73",
+  "submitted_at": "2026-11-06T10:15:30Z",
   "client_info": {
-    "company_name": "Apex Innovations",
-    "contact_name": "Sarah Jenkins",
-    "contact_email": "sarah@apexinnovations.io",
-    "website": "https://apexinnovations.io"
+    "first_name": "Sarah",
+    "last_name": "Jenkins",
+    "email": "sarah.j@acme-corp.io",
+    "company_name": "Acme Corp",
+    "website": "https://acme-corp.io",
+    "company_size": "50-200"
   },
-  "project_scope": {
-    "service_tier": "Enterprise AI Infrastructure",
-    "budget_range": "$10,000 - $25,000",
-    "target_launch_date": "2026-12-15",
-    "raw_brief": "We need an internal RAG pipeline connected to our Slack workspace and Notion documentation hub. Our engineers need API documentation and a dedicated Slack channel for integration assistance."
-  },
-  "metadata": {
-    "submitted_at": "2026-11-06T14:32:00Z",
-    "source": "Web Intake Form V2"
+  "project_details": {
+    "tier": "Enterprise",
+    "budget": 25000,
+    "primary_goal": "We need to automate our sales ops workflow, connect HubSpot to Notion, and set up an AI lead scoring agent.",
+    "tech_stack": ["HubSpot", "Slack", "Notion", "PostgreSQL"],
+    "target_launch_date": "2026-12-15"
   }
 }
 ```
 
-### Make.com Trigger Configuration
+### Data Validation & Filtering
 
-1. Log in to **Make.com**, create a new Scenario, and add a **Webhooks -> Custom Webhook** module.
-2. Click **Add**, name the webhook `Client-Onboarding-Receiver`, and copy the generated listener URL.
-3. Send a test payload via Postman or `curl` to determine the data structure:
+Immediately following the webhook trigger, route the payload through a **Basic Filter** in Make to ensure data integrity before executing downstream modules:
 
-```bash
-curl -X POST https://hook.us1.make.com/your-custom-webhook-id \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_info": {
-      "company_name": "Apex Innovations",
-      "contact_name": "Sarah Jenkins",
-      "contact_email": "sarah@apexinnovations.io",
-      "website": "https://apexinnovations.io"
-    },
-    "project_scope": {
-      "service_tier": "Enterprise AI Infrastructure",
-      "budget_range": "$10,000 - $25,000",
-      "target_launch_date": "2026-12-15",
-      "raw_brief": "We need an internal RAG pipeline connected to our Slack workspace."
-    }
-  }'
-```
+* **Condition 1**: `{{1.client_info.email}}` *Text operator: Contains* `@`
+* **Condition 2**: `{{1.client_info.company_name}}` *Exists*
+* **Condition 3**: `{{1.project_details.budget}}` *Numeric operator: Greater than or equal to* `5000`
 
-4. Immediately after the Webhook module, attach a **Basic Feeder -> Filter** to enforce input requirements.
-
-```text
-Condition Setup:
-- {{1.client_info.contact_email}} Pattern matching (validate email syntax via standard Regex: ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)
-- {{1.client_info.company_name}}  Exists
-```
+If the payload fails validation, execution halts instantly, avoiding wasted OpenAI API tokens and polluted Notion databases.
 
 ---
 
 ## Step 2: Processing Data with AI
 
-Raw client briefs are often unstructured and noisy. We use OpenAI's `gpt-4o` module with **Structured Outputs (JSON Schema)** to process the input brief into consistent, operational metadata.
+Unstructured form inputs (like goals or tech stack lists) need to be transformed into standardized, actionable project records. We use the **OpenAI (ChatGPT)** module (`Create a Completion`) configured with GPT-4o and JSON Schema enforcing Structured Outputs.
 
-### OpenAI Integration Setup
-
-Add the **OpenAI -> Create a Completion (v2)** module to your scenario.
+### OpenAI Module Configuration
 
 * **Model**: `gpt-4o`
 * **Response Format**: `json_object`
+* **Temperature**: `0.2` (Low variance for strict administrative parsing)
 
-#### System Prompt
+### System Prompt
 ```text
-You are an executive operations assistant for a high-end tech consultancy. Your task is to analyze raw client intake forms, extract technical constraints, derive initial setup tasks, calculate project complexity, and write a professional welcome message.
+You are an expert technical project manager for an elite AI & Automation agency.
+Your objective is to analyze raw client intake responses and produce a structured JSON object containing an executive summary, strategic recommendations, identified technical risks, and 3-5 immediate milestone tasks for onboarding.
 
-You must respond ONLY with valid JSON matching the exact specified target schema.
+Always respond in strictly valid JSON using this structure:
+{
+  "executive_summary": "string",
+  "risk_assessment": ["string"],
+  "recommended_architecture": "string",
+  "onboarding_tasks": [
+    {
+      "task_name": "string",
+      "priority": "High" | "Medium" | "Low",
+      "estimated_hours": number
+    }
+  ]
+}
 ```
 
-#### User Prompt
+### User Prompt Mapping
 ```text
-Analyze the following client intake context:
+Analyze the following client intake submission:
 
-Company Name: {{1.client_info.company_name}}
-Contact Name: {{1.client_info.contact_name}}
-Service Tier: {{1.project_scope.service_tier}}
-Target Launch: {{1.project_scope.target_launch_date}}
-Brief Context: {{1.project_scope.raw_brief}}
+Client: {{1.client_info.company_name}}
+Contact: {{1.client_info.first_name}} {{1.client_info.last_name}} ({{1.client_info.email}})
+Target Launch: {{1.project_details.target_launch_date}}
+Budget: ${{1.project_details.budget}}
+Tech Stack: {{join(1.project_details.tech_stack; ", ")}}
 
-Generate structured actionable onboarding metadata based on this data.
+Primary Goal & Requirements:
+"{{1.project_details.primary_goal}}"
 ```
 
-#### Target JSON Response Schema
-Configure the module's JSON Schema attribute:
+### Sample AI Output Structure
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "executive_summary": { "type": "string" },
-    "complexity_rating": { "type": "string", "enum": ["Low", "Medium", "High", "Critical"] },
-    "extracted_deliverables": {
-      "type": "array",
-      "items": { "type": "string" }
+  "executive_summary": "Acme Corp seeks an enterprise sales automation solution integrating HubSpot with Notion and a custom PostgreSQL backend. High priority is placed on AI-driven lead scoring.",
+  "risk_assessment": [
+    "Database schema sync complexity between HubSpot and PostgreSQL.",
+    "Tight 5-week launch timeline requiring aggressive milestone pacing."
+  ],
+  "recommended_architecture": "Make.com workflow engine acting as middleware between HubSpot Webhook events, OpenAI API for scoring evaluation, and Notion/Postgres endpoints.",
+  "onboarding_tasks": [
+    {
+      "task_name": "Kickoff Call & API Key Collection",
+      "priority": "High",
+      "estimated_hours": 2
     },
-    "initial_tasks": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "task_name": { "type": "string" },
-          "due_days_offset": { "type": "integer" },
-          "category": { "type": "string", "enum": ["Access", "Discovery", "Architecture", "Billing"] }
-        },
-        "required": ["task_name", "due_days_offset", "category"]
-      }
+    {
+      "task_name": "Map Data Dictionary (HubSpot to Notion)",
+      "priority": "High",
+      "estimated_hours": 6
     },
-    "custom_welcome_message": { "type": "string" }
-  },
-  "required": [
-    "executive_summary",
-    "complexity_rating",
-    "extracted_deliverables",
-    "initial_tasks",
-    "custom_welcome_message"
+    {
+      "task_name": "Deploy Lead Scoring AI Agent Pipeline",
+      "priority": "Medium",
+      "estimated_hours": 12
+    }
   ]
 }
 ```
@@ -176,115 +167,106 @@ Configure the module's JSON Schema attribute:
 
 ## Step 3: Dispatch & CRM Sync
 
-Once the unstructured context is converted into structured JSON attributes, we write the data to Notion and dispatch operational notifications.
+Once the unstructured intake is parsed by OpenAI, the data is pushed to Notion and dynamic team notifications are dispatched.
 
-### Notion API Configuration
+### 1. Create Main Account Page in Notion
 
-Make sure your Notion integration token is connected and has explicit write access to your **Clients CRM** and **Task Database**.
+Add the **Notion > Create a Database Item** module targeting your **Clients CRM Database**.
 
-#### 1. Create Notion Page in "Clients Master DB"
-Add a **Notion -> Create a Page** module.
-
-* **Database ID**: Select your `Clients Master` database.
-* **Fields Mapping**:
-  * `Client Name` (Title): `{{1.client_info.company_name}}`
-  * `Primary Contact` (Text): `{{1.client_info.contact_name}}`
-  * `Contact Email` (Email): `{{1.client_info.contact_email}}`
-  * `Status` (Select): `Onboarding`
-  * `Complexity` (Select): `{{2.complexity_rating}}`
-  * `Executive Summary` (Text): `{{2.executive_summary}}`
-
-#### 2. Loop & Add Default Onboarding Tasks
-Connect an **Iterator** to read the array output `{{2.initial_tasks}}`.
-Following the Iterator, place a **Notion -> Create a Database Item** module linked to your **Tasks Database**:
-
-* **Task Name** (Title): `{{3.task_name}}`
-* **Category** (Select): `{{3.category}}`
-* **Client Relation** (Relation): `{{2.id}}` *(Page ID generated from step 1)*
-* **Due Date** (Date): `{{addDays(now; 3.due_days_offset)}}`
+#### Data Mapping Reference
+* **Page Title**: `{{1.client_info.company_name}}`
+* **Email (Email Field)**: `{{1.client_info.email}}`
+* **Status (Select)**: `Onboarding`
+* **Budget (Number)**: `{{1.project_details.budget}}`
+* **AI Brief (Rich Text)**: `{{parseJSON(2.choices[1].message.content).executive_summary}}`
+* **Tech Stack (Multi-Select)**: `{{1.project_details.tech_stack}}`
 
 ```
-┌──────────────┐     ┌──────────────┐     ┌────────────────────────┐
-│  Notion Page │ --> │   Iterator   │ --> │  Notion Task Creation  │
-│  (Client)    │     │ (AI Tasks)   │     │ (Linked to Client Page)│
-└──────────────┘     └──────────────┘     └────────────────────────┘
+   +-------------------------------------------------------------+
+   |                       NOTION CLIENT PAGE                    |
+   +-------------------------------------------------------------+
+   |  Company Name: Acme Corp                                    |
+   |  Status: Onboarding                                         |
+   |  Executive Summary: Acme Corp seeks an enterprise sales...  |
+   +-------------------------------------------------------------+
+                                │
+                                ▼ (Generates Notion Page ID: 17b2c...)
 ```
 
-### Team Alerts & Client Notification
+### 2. Iterate and Create Task Items
 
-Add a **Slack -> Create a Message** module for internal team alerts and an **Email/SendGrid** module for client notification.
+To push the individual tasks generated by GPT-4o into a secondary **Notion Tasks Database**:
 
-#### Slack Message Payload (Block Kit Format)
-```json
-{
-  "channel": "#agency-alerts",
-  "text": " New Client Onboarded: {{1.client_info.company_name}}",
-  "blocks": [
-    {
-      "type": "header",
-      "text": {
-        "type": "plain_text",
-        "text": "🚀 New Client Intake Processed"
-      }
-    },
-    {
-      "type": "section",
-      "fields": [
-        { "type": "mrkdwn", "text": "*Company:*\n{{1.client_info.company_name}}" },
-        { "type": "mrkdwn", "text": "*Complexity:*\n{{2.complexity_rating}}" },
-        { "type": "mrkdwn", "text": "*Service Tier:*\n{{1.project_scope.service_tier}}" },
-        { "type": "mrkdwn", "text": "*Contact Email:*\n{{1.client_info.contact_email}}" }
-      ]
-    },
-    {
-      "type": "section",
-      "text": {
-        "type": "mrkdwn",
-        "text": "*Executive Summary:*\n{{2.executive_summary}}"
-      }
-    }
-  ]
-}
+1. Add an **Iterator** module immediately following the Notion step.
+2. Set the Array field to: `{{parseJSON(2.choices[1].message.content).onboarding_tasks}}`.
+3. Add a **Notion > Create a Database Item** module after the iterator.
+4. Target the **Tasks Database**. Map properties:
+   * **Task Name**: `{{3.value.task_name}}`
+   * **Priority**: `{{3.value.priority}}`
+   * **Estimated Hours**: `{{3.value.estimated_hours}}`
+   * **Relation (Parent Client)**: `{{4.id}}` *(Refers to the Client Page created in step 1)*
+
+### 3. Send Team Alert to Slack
+
+Add the **Slack > Create a Message** module to alert the delivery team.
+
+```markdown
+🚨 *New Client Onboarded: {{1.client_info.company_name}}* 🚨
+
+• *Contact:* {{1.client_info.first_name}} {{1.client_info.last_name}} (<mailto:{{1.client_info.email}}|{{1.client_info.email}}>)
+• *Budget:* ${{1.project_details.budget}}
+• *Target Launch:* {{1.project_details.target_launch_date}}
+
+📝 *Executive Summary:*
+_{{parseJSON(2.choices[1].message.content).executive_summary}}_
+
+🔗 <https://notion.so/{{replace(4.id; "-"; "")}}|Open Client Record in Notion>
 ```
-
-#### Client Welcome Email (SendGrid/Gmail)
-* **To**: `{{1.client_info.contact_email}}`
-* **Subject**: `Welcome to the Onboarding Phase - {{1.client_info.company_name}}`
-* **Body**: `{{2.custom_welcome_message}}`
 
 ---
 
 ## JSON Blueprint Configuration
 
-Below is a blueprint representation of the scenario. You can copy this JSON object directly into Make.com using the **Import Scenario** option to quickly populate the pipeline structure:
+Below is a importable scenario skeleton representation for Make.com. You can save this block as a `.json` file and import it directly into your Make scenario builder using the **Import Capability**.
 
 ```json
 {
-  "name": "Production AI Client Onboarding Pipeline",
+  "name": "Production Client Onboarding Automation",
   "modules": [
     {
       "id": 1,
       "module": "gateway:CustomWebhook",
       "version": 1,
       "parameters": {
-        "hook": "client_onboarding_webhook"
+        "hook": 78910,
+        "maxResults": 1
+      },
+      "metadata": {
+        "designer": { "x": 100, "y": 200 }
       }
     },
     {
       "id": 2,
       "module": "openai-gpt3:createCompletion",
-      "version": 2,
+      "version": 1,
       "parameters": {
         "model": "gpt-4o",
+        "temperature": 0.2,
         "response_format": { "type": "json_object" }
+      },
+      "metadata": {
+        "designer": { "x": 350, "y": 200 }
       }
     },
     {
       "id": 3,
-      "module": "notion:createAPage",
-      "version": 1,
+      "module": "notion:createADatabaseItem",
+      "version": 2,
       "parameters": {
-        "database_id": "notion_client_crm_db_id"
+        "databaseId": "bd_crm_clients_prod"
+      },
+      "metadata": {
+        "designer": { "x": 600, "y": 200 }
       }
     },
     {
@@ -292,15 +274,21 @@ Below is a blueprint representation of the scenario. You can copy this JSON obje
       "module": "builtin:Iterator",
       "version": 1,
       "parameters": {
-        "array": "{{2.initial_tasks}}"
+        "array": "{{parseJSON(2.choices[1].message.content).onboarding_tasks}}"
+      },
+      "metadata": {
+        "designer": { "x": 850, "y": 200 }
       }
     },
     {
       "id": 5,
       "module": "notion:createADatabaseItem",
-      "version": 1,
+      "version": 2,
       "parameters": {
-        "database_id": "notion_tasks_db_id"
+        "databaseId": "bd_tasks_relational_prod"
+      },
+      "metadata": {
+        "designer": { "x": 1100, "y": 200 }
       }
     },
     {
@@ -308,7 +296,11 @@ Below is a blueprint representation of the scenario. You can copy this JSON obje
       "module": "slack:createAMessage",
       "version": 1,
       "parameters": {
-        "channel": "agency-alerts"
+        "channelType": "public",
+        "channelId": "C059ABC123"
+      },
+      "metadata": {
+        "designer": { "x": 1350, "y": 200 }
       }
     }
   ],
@@ -326,47 +318,37 @@ Below is a blueprint representation of the scenario. You can copy this JSON obje
 
 ## Error Handling & Production Guidelines
 
-Deploying automated pipelines into production requires accounting for API limits, downstream failures, and invalid user input.
+To deploy this scenario securely in a mission-critical environment, implement the following reliability standards:
 
 ```
-                  ┌────────────────────────┐
-                  │ Webhook Data Received  │
-                  └───────────┬────────────┘
-                              │
-                      [Validation Step]
-                        /           \
-                  (Passes)         (Fails)
-                    /                 \
-        ┌──────────────────┐   ┌──────────────────────┐
-        │ Continue Pipeline│   │ Return 400 Bad Req   │
-        └────────┬─────────┘   │ Send Alert to Admin  │
-                 │             └──────────────────────┘
-     [OpenAI/Notion API Call]
-                 │
-           (Error Encountered?)
-            /              \
-        (Yes)              (No)
-          /                  \
-┌─────────────────┐    ┌─────────────────┐
-│ Break Directive │    │ Pipeline Finish │
-│ Exponential     │    └─────────────────┘
-│ Backoff Retry   │
-└─────────────────┘
+[Incoming Payload] ──> [Validation Filter]
+                             │
+                             ├─ (Valid) ───> [Primary Workflow]
+                             │
+                             └─ (Invalid) ──> [Error Handler: Slack Alert]
+                                                    │
+                                                    ▼
+                                            [Break Directive: Auto Retry]
 ```
 
-### 1. Handling API Rate Limits
-* **Notion API**: Notion enforces a strict rate limit of **3 requests per second**. When creating multiple task items using an Iterator, place a **Tools -> Sleep** module set to `350 ms` inside the iterator loop to avoid HTTP `429 Too Many Requests` status codes.
-* **OpenAI Rate Limits**: Ensure your account tier supports your concurrent execution volume. Implement a fallback model (e.g., fallback from `gpt-4o` to `gpt-4o-mini`) via Make's router path if primary API calls return error code `429` or `503`.
+### 1. OpenAI Rate Limiting & 429 Resilience
+* **Issue**: OpenAI API enforcing HTTP `429 Too Many Requests` during spike intake periods.
+* **Solution**: Right-click the OpenAI module, select **Attach Error Handler**, and choose **Break**.
+  * **Number of retries**: `3`
+  * **Interval between retries**: `1 minute`
+  * **Fallback**: If all retries fail, route execution to a secondary route using the `Commit` directive and notify an administrator via Email.
 
-### 2. Failure Recovery Rules (Break Directive)
-Network disruptions or service outages can interrupt the execution of downstream APIs.
-* Right-click on the Notion and OpenAI modules in Make.com and select **Add Error Handler**.
-* Attach a **Break Directive** module to automatically store failed executions in the **Incomplete Executions** queue.
-* Configure the directive with **5 Retries** using an **Exponential Backoff Strategy** (intervals: 1m, 5m, 15m, 1h, 6h).
+### 2. Notion API Rate-Limit Protection
+* Notion limits requests to **3 requests per second**.
+* If creating multiple sub-tasks via an Iterator, place a **Tools > Sleep** module inside the iterator loop set to `350ms` to avoid hitting rate limits.
 
-### 3. Payload Edge Cases
-* **Missing Fields**: Always enforce default values within your Make.com mapping functions. For instance, if `client_info.website` is empty, use the `ifempty()` function:
-  ```text
-  {{ifempty(1.client_info.website; "Not Provided")}}
-  ```
-* **Payload Validation Failures**: Configure an immediate response route for invalid webhook data. If validation fails, return an HTTP `400 Bad Request` with structured error feedback rather than silently terminating the run.
+### 3. Webhook Security Validation
+* Verify incoming requests by checking an HTTP header signature (e.g., `X-Signature` or an authorization token query parameter like `?token=YOUR_SECRET_KEY`).
+* Attach a filter right after the custom webhook:
+  `{{1.headers.authorization}}` *Equal to* `Bearer YOUR_SECURE_HASH_KEY`
+
+### 4. Idempotency & Duplicate Prevention
+* Prior to creating a new Notion entry, execute a **Notion > Query a Database** module filtering by `Email = {{1.client_info.email}}`.
+* Add a router:
+  * **Path A (New Client)**: Proceed with record creation if `Total number of bundles` returned by the query is `0`.
+  * **Path B (Existing Client)**: Execute an `Update a Database Item` module to append context to the existing page, avoiding duplicate database entries.
