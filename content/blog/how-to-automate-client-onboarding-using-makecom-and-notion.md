@@ -10,60 +10,54 @@ featured: false
 ---
 
 ## Architecture Overview
+To build a resilient client onboarding engine, we utilize a "Hub-and-Spoke" architecture. The workflow follows this lifecycle:
 
-To build a robust client onboarding engine, we move away from manual data entry and toward an event-driven architecture. The workflow follows this lifecycle:
-
-1.  **Input Trigger:** A client submits a Typeform or Tally form.
-2.  **Validation & Enrichment:** Make.com parses the payload and uses OpenAI to extract key project requirements.
-3.  **Data Storage:** The structured data is pushed to a Notion "Client CRM" database.
-4.  **Automated Notifications:** Slack/Email alerts are dispatched to the internal team, and a personalized welcome email is sent to the client.
+1.  **Input Trigger:** A Webhook or Typeform submission captures client data.
+2.  **AI Validation:** An OpenAI module parses unstructured input into a structured JSON schema.
+3.  **Data Storage:** The processed data is routed to a **Notion Database** (The "Source of Truth").
+4.  **Automated Notifications:** Slack/Email modules trigger personalized welcome sequences based on the client's service tier.
 
 ---
 
 ## Step 1: Setting Up the Trigger & Payload
+Start by creating a **Custom Webhook** in Make.com. This acts as your API endpoint.
 
-The foundation of your automation is the **Webhook**. 
-
-1.  In Make.com, create a new scenario and add the **Webhooks > Custom Webhook** module.
-2.  Copy the generated URL and paste it into your form provider’s "Webhook" or "Integrations" settings.
-3.  **Pro Tip:** Always send a "Test Data" payload to the webhook so Make.com can map the fields (e.g., `client_name`, `email`, `project_scope`).
-4.  Use the **Data Structure** feature in Make to define the expected JSON schema. This prevents runtime errors if a client leaves a field blank.
+*   **Action:** Create a new scenario and select the "Webhooks" module.
+*   **Configuration:** Copy the generated URL and paste it into your form builder (e.g., Typeform, Tally, or Webflow).
+*   **Payload Structure:** Ensure your form sends data in a flat structure. If you are using a complex form, use a "Data Store" or "Variable" module to normalize the fields (e.g., `client_name`, `email`, `service_package`, `onboarding_date`).
 
 ---
 
 ## Step 2: Processing Data with AI
+Raw client input is often messy. We use OpenAI’s `gpt-4o` to clean and categorize this data before it hits your CRM.
 
-Raw form data is often messy. We use OpenAI to standardize the input before it hits Notion.
-
-1.  **Add the OpenAI Module:** Select `Create a Completion` (or `Chat Completions`).
-2.  **The Prompt Chain:** Use a system prompt to force structured output:
-    > "Extract the project scope, timeline, and budget from the following text. Return the output as a JSON object with keys: 'scope', 'deadline', 'budget_tier'."
-3.  **Parsing:** Use the **JSON > Parse JSON** module immediately after the OpenAI module to convert the AI's text response into usable variables for your Notion database.
+*   **The Prompt:** Use a System Prompt to enforce JSON output:
+    > "You are an onboarding assistant. Extract the client's company name, primary goal, and urgency level from the following text. Output strictly in JSON format: `{"company": "", "goal": "", "urgency": "low|medium|high"}`."
+*   **Parsing:** Use the **JSON > Parse JSON** module immediately after the OpenAI module to map these fields into your scenario variables.
 
 ---
 
 ## Step 3: Dispatch & CRM Sync
+Once the data is validated, we push it to the Notion workspace.
 
-Now that the data is clean, we push it to your workspace:
-
-1.  **Notion Module:** Use `Create a Database Item`. Map the AI-extracted fields to your Notion properties. Ensure you include a `Status` property set to "Onboarding Started."
-2.  **Slack/Email:** Add a `Slack > Create a Message` module to notify your team. Include a link to the newly created Notion page using the `URL` returned by the Notion module.
-3.  **Client Communication:** Use `Gmail > Send an Email` to trigger a personalized welcome message. Use the `client_name` variable to make it feel human.
+1.  **Notion Module:** Use the "Create a Database Item" action. Map your parsed JSON fields to the corresponding properties in your Notion "Clients" database.
+2.  **Conditional Routing:** Use a **Router** to split paths:
+    *   **Path A (High Urgency):** Send an immediate Slack alert to your `#sales-priority` channel.
+    *   **Path B (Standard):** Send an automated "Welcome Email" via Gmail or SendGrid with a link to the Notion portal.
 
 ---
 
 ## JSON Blueprint Configuration
-
-You can import this structure into Make.com by clicking "Import Blueprint" in the scenario settings.
+You can import this structure into your Make.com scenario (copy the logic below):
 
 ```json
 {
-  "name": "Client Onboarding Automation",
+  "name": "Client Onboarding Workflow",
   "flow": [
-    { "module": "webhook:customWebhook", "params": {} },
-    { "module": "openai:createCompletion", "params": { "model": "gpt-4o", "prompt": "Extract project details..." } },
-    { "module": "notion:createDatabaseItem", "params": { "databaseId": "YOUR_DB_ID" } },
-    { "module": "slack:createMessage", "params": { "channel": "onboarding-alerts" } }
+    {"module": "webhook:customWebhook", "params": {"name": "Client Form"}},
+    {"module": "openai:createCompletion", "params": {"model": "gpt-4o", "prompt": "Extract client data..."}},
+    {"module": "json:parse", "params": {"json": "{{1.choices[0].message.content}}"}},
+    {"module": "notion:createDatabaseItem", "params": {"databaseId": "YOUR_DB_ID", "properties": {"Name": "{{2.company}}"}}}
   ]
 }
 ```
@@ -72,9 +66,9 @@ You can import this structure into Make.com by clicking "Import Blueprint" in th
 
 ## Error Handling & Production Guidelines
 
-To ensure your automation doesn't break when you scale:
+To ensure your automation doesn't break during high-volume periods, implement these production-grade practices:
 
-*   **Retry Logic:** In Make.com, click the "Advanced Settings" of your modules. Enable **"Number of retries"** (set to 3) to handle transient API failures from OpenAI or Notion.
-*   **Rate Limiting:** If you expect high volume, add a **Sleep** module or use a **Data Store** to queue requests, ensuring you don't hit Notion's API rate limits (3 requests per second).
-*   **Edge Case Handling:** Always add a **Router** after your Webhook. Create a path for "Incomplete Data" that sends an automated email back to the client asking for missing information, rather than failing the scenario.
-*   **Logging:** Use a "Google Sheets" module as a secondary logger for every successful run. This provides an audit trail if a Notion sync fails silently.
+*   **Retry Logic:** In your module settings, increase the "Number of attempts" to 3 with a 10-second delay. This handles transient API failures from OpenAI or Notion.
+*   **Error Pathing:** Always attach an **Error Handler** (the small red icon) to your modules. If a step fails, route the error to a "Support" Slack channel so you can manually intervene.
+*   **Rate Limiting:** If you expect high volume, use a **Sleep** module (e.g., 1 second) between API calls to stay within Notion’s API rate limits (3 requests per second).
+*   **Data Sanitization:** Always use the `stripHTML()` function on user-submitted text to prevent injection attacks or formatting issues in your Notion database.
